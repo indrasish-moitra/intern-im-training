@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: im-vision
+  namespace: intern-training-box
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: im-vision
+  template:
+    metadata:
+      labels:
+        app: im-vision
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "intern-training-box"
+        vault.hashicorp.com/tls-skip-verify: "true"
+        vault.hashicorp.com/agent-requests-cpu: 5m
+        vault.hashicorp.com/agent-limits-cpu: 10m
+        vault.hashicorp.com/agent-requests-mem: 16Mi
+        vault.hashicorp.com/agent-limits-mem: 32Mi
+        vault.hashicorp.com/agent-inject-secret-credentials.json: "secret/teams/intern-training/pg-cloud-sql-creds"
+        vault.hashicorp.com/agent-inject-template-credentials.json: |
+          {{ with secret "secret/teams/intern-training/pg-cloud-sql-creds" }}
+            {{ .Data.data | toJSON }}
+          {{ end }}
+        vault.hashicorp.com/agent-inject-secret-db_creds.json: "secret/teams/intern-training/im-db-creds"
+        vault.hashicorp.com/agent-inject-template-db_creds.json: |
+          {{ with secret "secret/teams/intern-training/im-db-creds" }}
+            {{ .Data.data | toJSON }}
+          {{ end }}
+    spec:
+      serviceAccountName: vault-sidecar
+      containers:
+      - name: im-vision
+        image: us.gcr.io/cp-aat-sbox-training/helloworld-im
+        env:
+          - name: PORT
+            value: "8080"
+        # resources:
+        #   limits:
+        #     cpu: 30m
+        #     memory: 30Mi
+        #   requests:
+        #     cpu: 20m
+        #     memory: 20Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: imvision-service
+  namespace: intern-training-box
+  annotations:
+    cloud.google.com/load-balancer-type: Internal
+spec:
+  selector:
+    app: im-vision
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: LoadBalancer
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: tls-imvision-ingress
+  namespace: intern-training-box
+  annotations:
+    cert-manager.io/cluster-issuer: cluster-issuer
+    kubernetes.io/ingress.allow-http: "false"
+spec:
+  tls:
+  - hosts:
+      - imvision.colpal.cloud
+    secretName: imvision-certificate-tls2
+  rules:
+  - host: imvision.colpal.cloud
+    http:
+      paths:
+      - path: /*
+        backend:
+          serviceName: imvision-service
+          servicePort: 80
