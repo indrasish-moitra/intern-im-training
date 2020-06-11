@@ -5,9 +5,27 @@ import json
 import sqlalchemy
 
 from flask import Flask, request
+from flask_cors import CORS
 from google.cloud import vision
 
+from flask import Flask, request
+from flask_cors import CORS
+from google.cloud import vision
+
+config = {
+   'ORIGINS': [
+
+        'https://3001-dot-12583324-dot-devshell.appspot.com'
+        'https://im-react-frontend-dot-cp-aat-sbox-training.ue.r.appspot.com'
+   ]
+}
 app = Flask(__name__)
+CORS(app,
+    resources={r'/*': {
+        'origins': config['ORIGINS']
+    }},
+    supports_credentials=True
+    )
 
 with open('/vault/secrets/db_creds.json') as f:
    rawsecret = f.read()
@@ -90,6 +108,14 @@ def callsql(sql_statement):
 @app.route('/category')
 def category():
     return(callsql("""SELECT * FROM category;"""), 200)
+
+@app.route('/duplicatecount')
+def dupicate():
+    return(callsql("""select description, count(description_id)
+                    from image_text where length(description)>3
+                    group by description
+                    order by count desc limit 30
+                    ;"""),200)
 
 
 @app.route('/')
